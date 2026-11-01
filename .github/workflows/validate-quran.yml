@@ -1,0 +1,44 @@
+name: Validate Quran source (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-quran-source
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run parser tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Download and validate official Tanzil data
+        run: |
+          python scripts/fetch_tanzil.py
+          python scripts/validate_quran.py
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile \
+            src/quran_source.py \
+            src/render_short.py \
+            scripts/fetch_tanzil.py \
+            scripts/setup_assets.py \
+            scripts/validate_quran.py
+
+      - name: Report completion
+        run: echo "Validation complete. No video was rendered or published."
