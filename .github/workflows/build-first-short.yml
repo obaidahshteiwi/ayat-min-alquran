@@ -92,5 +92,47 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Send video metadata sample to Make webhook
+        if: ${{ secrets.MAKE_WEBHOOK_URL != '' }}
+        env:
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          VIDEO_PATH: output/s105-a001-005.mp4
+        run: |
+          python - <<'PY' > /tmp/make-payload.json
+          import json, os, pathlib, subprocess
+          path = pathlib.Path(os.environ["VIDEO_PATH"])
+          probe = subprocess.run(
+              ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+               "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+              check=True, capture_output=True, text=True,
+          )
+          payload = {
+              "event": "quran_short_build_ready",
+              "title": "سورة الفيل | تلاوة قرآنية",
+              "description": "تلاوة سورة الفيل، الآيات ١–٥.",
+              "surah_number": 105,
+              "surah_name": "الفيل",
+              "verse_range": "105:1-5",
+              "video_file_name": path.name,
+              "mime_type": "video/mp4",
+              "video_size_bytes": path.stat().st_size,
+              "duration_seconds": round(float(probe.stdout.strip()), 2),
+              "width": 1080,
+              "height": 1920,
+              "artifact_name": "ayat-min-alquran-first-short",
+              "github_repository": os.environ["GITHUB_REPOSITORY"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
+              "github_sha": os.environ["GITHUB_SHA"],
+              "sample_only": True,
+              "youtube_published": False,
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          PY
+          curl --fail-with-body --silent --show-error --retry 2 --retry-delay 2 \
+            -X POST "$MAKE_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/make-payload.json
+
       - name: Confirm no YouTube upload
         run: echo "MP4 was saved as a GitHub Actions artifact only. No YouTube upload or publication was performed."
