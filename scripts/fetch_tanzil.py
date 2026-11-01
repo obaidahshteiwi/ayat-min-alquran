@@ -41,10 +41,31 @@ def download(url: str) -> bytes:
         return response.read()
 
 
+def download_text(form_data: dict[str, str]) -> bytes:
+    # Tanzil's download page expects a form POST; a GET returns the HTML page,
+    # not the selected Quran text file.
+    body = urlencode(form_data).encode("ascii")
+    request = Request(
+        TEXT_ENDPOINT,
+        data=body,
+        headers={
+            "User-Agent": "AyatMinAlQuran/1.0 (personal Quran Shorts project)",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": "https://tanzil.net/pub/download/",
+        },
+        method="POST",
+    )
+    with urlopen(request, timeout=60) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"Tanzil text download failed with HTTP {response.status}."
+            )
+        return response.read()
+
+
 def main() -> int:
     print("Downloading the original Tanzil Uthmani text and chapter metadata...")
-    query = urlencode(TEXT_OPTIONS)
-    text_bytes = download(f"{TEXT_ENDPOINT}?{query}")
+    text_bytes = download_text(TEXT_OPTIONS)
     metadata_bytes = download(METADATA_ENDPOINT)
 
     # Validate both files before writing either one to disk.
