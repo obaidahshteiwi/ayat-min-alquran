@@ -36,7 +36,7 @@
    `python scripts/validate_quran.py`
 5. ثبّت خط Amiri ورخصته:
    `python scripts/setup_assets.py`
-6. انسخ `config.example.json` إلى `config.json`، ثم جهّز ملف التلاوة وملف `audio-rights.json` بحسب تعليمات `assets/audio/README.md`.
+6. انسخ `config.example.json` إلى `config.json`. انسخ `assets/audio/audio-rights.example.json` إلى `assets/audio/audio-rights.json`، ثم املأ بيانات الحقوق والإذن بحسب `assets/audio/README.md`.
 7. لا تستخدم صوتاً إلا إذا كان الترخيص أو الإذن يسمح صراحة بإعادة نشره على YouTube. يتحقق المولّد من وجود سجل الحقوق قبل إنشاء الفيديو، لكنه لا يستطيع التحقق من صحة الإذن القانوني نفسه.
 
 لتوليد فيديو من آية مأخوذة مباشرة من ملف Tanzil المتحقق منه:
