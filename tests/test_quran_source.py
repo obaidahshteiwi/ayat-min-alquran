@@ -55,7 +55,7 @@ class QuranSourceTests(unittest.TestCase):
 
     def test_missing_copyright_notice_is_rejected(self):
         text = synthetic_text().replace(
-            b"# CHANGING IT IS NOT ALLOWED.\n", b"# terms omitted\n"
+            b"# This text is verbatim; CHANGING IT IS NOT ALLOWED.\n", b"# terms omitted\n"
         )
         with self.assertRaises(QuranSourceError):
             load_tanzil_bytes(text, synthetic_metadata())
