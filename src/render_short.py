@@ -62,7 +62,7 @@ def make_fallback_landscape(path: Path, width: int, height: int) -> None:
         (width * 0.57, height * 0.76), (width * 0.82, height * 0.58),
         (width, height * 0.75), (width, height), (0, height)
     ], fill=(27, 59, 57, 255))
-    image.save(path, quality=95)
+    image.save(path)
 
 
 def shape_arabic(text: str) -> str:
