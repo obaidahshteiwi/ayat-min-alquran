@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from quran_source import get_verified_verse  # noqa: E402
+from media_rights import validate_media_permission  # noqa: E402
 
 
 def load_json(path: Path) -> dict:
@@ -176,7 +177,9 @@ def main() -> int:
     parser.add_argument("--surah", help="Required with manual --verse.")
     parser.add_argument("--ayah", type=int, help="Required with manual --verse.")
     parser.add_argument("--audio", help="Path to a licensed recitation audio file.")
+    parser.add_argument("--audio-license", help="Local JSON rights manifest for the recitation.")
     parser.add_argument("--background", help="Optional licensed background video file.")
+    parser.add_argument("--background-license", help="Local JSON rights manifest for the background video.")
     parser.add_argument("--config", default="config.json", help="Path to local config JSON.")
     parser.add_argument("--output", help="Optional output MP4 path.")
     parser.add_argument("--allow-repeat", action="store_true",
@@ -199,6 +202,13 @@ def main() -> int:
         audio = (ROOT / audio).resolve()
     if not audio.is_file():
         raise FileNotFoundError("A licensed recitation file is required. Set --audio or media.audio_file.")
+
+    audio_license = Path(args.audio_license or cfg["media"].get("audio_license_file", ""))
+    if not audio_license.is_absolute():
+        audio_license = (ROOT / audio_license).resolve()
+    validate_media_permission(
+        root=ROOT, asset_path=audio, manifest_path=audio_license, media_kind="recitation audio"
+    )
 
     duration = probe_duration(audio)
     min_duration = float(cfg["video"]["min_duration_seconds"])
@@ -236,6 +246,15 @@ def main() -> int:
             bg_path = (ROOT / bg_path).resolve()
         if not bg_path.is_file():
             raise FileNotFoundError(f"Background video not found: {bg_path}")
+        background_license = Path(
+            args.background_license or cfg["media"].get("background_license_file", "")
+        )
+        if not background_license.is_absolute():
+            background_license = (ROOT / background_license).resolve()
+        validate_media_permission(
+            root=ROOT, asset_path=bg_path, manifest_path=background_license,
+            media_kind="background video"
+        )
         inputs = ["-stream_loop", "-1", "-i", str(bg_path), "-i", str(audio),
                   "-loop", "1", "-i", str(overlay_image)]
         base_filter = (
