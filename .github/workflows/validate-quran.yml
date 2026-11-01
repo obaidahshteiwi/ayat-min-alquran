@@ -39,6 +39,7 @@ jobs:
             src/render_short.py \
             scripts/fetch_tanzil.py \
             scripts/setup_assets.py \
+            scripts/fetch_starter_media.py \
             scripts/validate_quran.py
 
       - name: Report completion
