@@ -277,7 +277,6 @@ def main() -> int:
     reference = f"سورة {surah_name} • {ayah_label}"
     make_text_overlay(overlay_image, verse_text, reference, cfg, source_verified)
 
-    duration_frames = max(1, int(duration * fps))
     background_video = args.background or cfg["media"].get("background_video", "")
     if background_video:
         bg_path = Path(background_video)
@@ -294,19 +293,24 @@ def main() -> int:
             root=ROOT, asset_path=bg_path, manifest_path=background_license,
             media_kind="background video"
         )
-        inputs = ["-stream_loop", "-1", "-i", str(bg_path), "-i", str(audio),
-                  "-loop", "1", "-i", str(overlay_image)]
+        inputs = [
+            "-stream_loop", "-1", "-i", str(bg_path), "-i", str(audio),
+            "-loop", "1", "-framerate", str(fps), "-i", str(overlay_image),
+        ]
         base_filter = (
             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height},fps={fps},trim=duration={duration}[bg];"
         )
     else:
-        inputs = ["-loop", "1", "-i", str(background_image), "-i", str(audio),
-                  "-loop", "1", "-i", str(overlay_image)]
+        inputs = [
+            "-loop", "1", "-framerate", str(fps), "-i", str(background_image),
+            "-i", str(audio),
+            "-loop", "1", "-framerate", str(fps), "-i", str(overlay_image),
+        ]
         base_filter = (
             f"[0:v]scale={width}:{height},zoompan=z='min(zoom+0.0005,1.06)':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={duration_frames}:s={width}x{height}:fps={fps}[bg];"
+            f"d=1:s={width}x{height}:fps={fps}[bg];"
         )
 
     filter_complex = base_filter + "[bg][2:v]overlay=0:0:format=auto,format=yuv420p[v]"
