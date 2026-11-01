@@ -14,3 +14,15 @@ venv/
 # Locally installed Amiri font and license (keep binary assets out of the repo)
 assets/fonts/*.ttf
 assets/fonts/OFL.txt
+
+# Private media files and rights evidence are local only
+assets/audio/*.mp3
+assets/audio/*.wav
+assets/audio/*.m4a
+assets/audio/audio-rights.json
+assets/audio/permission-evidence*
+assets/backgrounds/*.mp4
+assets/backgrounds/*.mov
+assets/backgrounds/*.webm
+assets/backgrounds/background-rights.json
+assets/backgrounds/permission-evidence*
