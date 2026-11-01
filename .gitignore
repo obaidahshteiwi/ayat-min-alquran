@@ -10,3 +10,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Locally installed Amiri font and license (keep binary assets out of the repo)
+assets/fonts/*.ttf
+assets/fonts/OFL.txt
