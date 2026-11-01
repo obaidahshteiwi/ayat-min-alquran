@@ -1,4 +1,4 @@
-مقطع قرآني من سورة [اسم السورة]، الآية [رقم الآية].
+مقطع قرآني من سورة الفيل، الآيات 1–5.
 
 النص القرآني: مشروع تنزيل (Tanzil Project)
 Tanzil Quran Text
@@ -8,8 +8,15 @@ Source: https://tanzil.net/
 This text may not be modified.
 License details: https://tanzil.net/docs/Text_License
 
-التلاوة: [اسم القارئ]
-الجهة المالكة أو الناشرة للتسجيل: [اسم الجهة]
-إذن إعادة الاستخدام أو رابط الترخيص: [رابط أو مرجع الإذن]
+التلاوة: سورة الفيل، رواية حفص، مرتّل.
+المصدر: Wikimedia Commons — Chapter 105, Al-Fil (Murattal) - Recitation of the Holy Qur'an.mp3
+المؤلف/الرافع كما في صفحة الملف: Atcovi.
+الرخصة: CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
+صفحة المصدر: https://commons.wikimedia.org/wiki/File:Chapter_105,_Al-Fil_(Murattal)_-_Recitation_of_the_Holy_Qur'an.mp3
 
-تم الإبقاء على النص القرآني كما ورد من مصدره دون تغيير. لا يُستخدم تسجيل صوتي إلا بعد الحصول على إذن إعادة نشر واضح من صاحب الحقوق.
+الخلفية: Misty river 47 seconds.webm.
+المؤلف: Digitura.
+الرخصة: CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
+صفحة المصدر: https://commons.wikimedia.org/wiki/File:Misty_river_47_seconds.webm
+
+ذُكرت المصادر للتوثيق مع أن رخصة CC0 لا تشترط الإسناد. يرجى مراجعة صفحات الملفات قبل النشر للتأكد من أن بيانات الترخيص لم تتغير.
