@@ -115,9 +115,34 @@ def load_local_tanzil(data_dir: Path):
     return load_tanzil_bytes(text_path.read_bytes(), metadata_path.read_bytes())
 
 
-def get_verified_verse(data_dir: Path, surah_number: int, ayah_number: int):
+
+def get_verified_verses(
+    data_dir: Path,
+    surah_number: int,
+    first_ayah: int,
+    last_ayah: int,
+) -> tuple[list[str], str]:
+    """Return a consecutive range of unmodified verse strings from Tanzil."""
     surahs, verses = load_local_tanzil(data_dir)
-    key = f"{surah_number}:{ayah_number}"
-    if surah_number not in surahs or key not in verses:
-        raise QuranSourceError(f"Verse {key} does not exist in the validated source.")
-    return verses[key], surahs[surah_number]["name"]
+    if surah_number not in surahs:
+        raise QuranSourceError(f"Unknown surah number: {surah_number}")
+    if first_ayah < 1 or last_ayah < first_ayah:
+        raise QuranSourceError("The ayah range must be positive and in ascending order.")
+    if last_ayah > surahs[surah_number]["ayah_count"]:
+        raise QuranSourceError(
+            f"Surah {surah_number} has only {surahs[surah_number]['ayah_count']} ayahs."
+        )
+
+    keys = [f"{surah_number}:{number}" for number in range(first_ayah, last_ayah + 1)]
+    try:
+        selected = [verses[key] for key in keys]
+    except KeyError as exc:
+        raise QuranSourceError(f"Missing ayah in requested range: {exc.args[0]}") from exc
+    return selected, surahs[surah_number]["name"]
+
+
+def get_verified_verse(data_dir: Path, surah_number: int, ayah_number: int):
+    selected, surah_name = get_verified_verses(
+        data_dir, surah_number, ayah_number, ayah_number
+    )
+    return selected[0], surah_name
