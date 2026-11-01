@@ -138,7 +138,7 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
         y += line_height + line_gap
 
     y += 45
-    x = (width - ref_height * 0 - (ref_box[2] - ref_box[0])) // 2
+    x = (width - (ref_box[2] - ref_box[0])) // 2
     draw.text((x, y), ref_display, font=ref_font, fill="#F4DFA8",
               stroke_width=1, stroke_fill=(0, 0, 0, 150))
 
