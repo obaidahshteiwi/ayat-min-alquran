@@ -1,0 +1,12 @@
+# Local source data downloaded from Tanzil (keep out of git)
+data/tanzil-uthmani.txt
+data/quran-data.xml
+
+# Local secrets/configuration and render output
+config.json
+output/
+.render_tmp/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
