@@ -34,7 +34,7 @@ def synthetic_metadata() -> bytes:
 def synthetic_text() -> bytes:
     lines = [
         "# Tanzil Quran Text",
-        "# Copyright (C) 2007-2021 Tanzil Project",
+        "# Copyright (C) 2007-2026 Tanzil Project",
         "# License: Creative Commons Attribution 3.0",
         "# This text is verbatim; CHANGING IT IS NOT ALLOWED.",
     ]
