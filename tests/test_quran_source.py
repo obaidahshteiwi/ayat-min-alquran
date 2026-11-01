@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from quran_source import (  # noqa: E402
     QuranSourceError,
     get_verified_verse,
+    get_verified_verses,
     load_tanzil_bytes,
     parse_verse_rows,
 )
@@ -78,6 +79,23 @@ class QuranSourceTests(unittest.TestCase):
             verse, surah = get_verified_verse(data_dir, 1, 1)
         self.assertEqual(verse, "نص اختبار 1-1")
         self.assertEqual(surah, "سورة اختبار 1")
+
+    def test_consecutive_verse_range_preserves_order_and_source_strings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp)
+            (data_dir / "tanzil-uthmani.txt").write_bytes(synthetic_text())
+            (data_dir / "quran-data.xml").write_bytes(synthetic_metadata())
+            verses, surah = get_verified_verses(data_dir, 105, 1, 5)
+        self.assertEqual(verses, [f"نص اختبار 105-{n}" for n in range(1, 6)])
+        self.assertEqual(surah, "سورة اختبار 105")
+
+    def test_invalid_verse_range_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp)
+            (data_dir / "tanzil-uthmani.txt").write_bytes(synthetic_text())
+            (data_dir / "quran-data.xml").write_bytes(synthetic_metadata())
+            with self.assertRaisesRegex(QuranSourceError, "ascending order"):
+                get_verified_verses(data_dir, 105, 5, 1)
 
 
 if __name__ == "__main__":
