@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Run parser tests
+      - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
       - name: Download and validate official Tanzil data
@@ -35,6 +35,7 @@ jobs:
         run: |
           python -m py_compile \
             src/quran_source.py \
+            src/media_rights.py \
             src/render_short.py \
             scripts/fetch_tanzil.py \
             scripts/setup_assets.py \
