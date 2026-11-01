@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from quran_source import get_verified_verse  # noqa: E402
+from quran_source import get_verified_verses  # noqa: E402
 from media_rights import validate_media_permission  # noqa: E402
 
 
@@ -73,19 +73,21 @@ def shape_arabic(text: str) -> str:
 
 def wrap_arabic(text: str, font: ImageFont.FreeTypeFont,
                 draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
-    words = text.split()
     lines: list[str] = []
-    current = ""
-    for word in words:
-        candidate = f"{current} {word}".strip()
-        shaped = shape_arabic(candidate)
-        if current and draw.textbbox((0, 0), shaped, font=font)[2] > max_width:
+    paragraphs = text.splitlines() or [text]
+    for paragraph in paragraphs:
+        words = paragraph.split()
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            shaped = shape_arabic(candidate)
+            if current and draw.textbbox((0, 0), shaped, font=font)[2] > max_width:
+                lines.append(shape_arabic(current))
+                current = word
+            else:
+                current = candidate
+        if current:
             lines.append(shape_arabic(current))
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(shape_arabic(current))
     return lines
 
 
@@ -153,19 +155,42 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
 
 
 def parse_verse(args):
-    if args.verse_key:
+    if args.verse_key or args.verse_range:
+        source_value = args.verse_key or args.verse_range
         try:
-            surah_number, ayah_number = (int(part) for part in args.verse_key.split(":"))
+            surah_part, ayah_part = source_value.split(":", 1)
+            surah_number = int(surah_part)
+            if args.verse_key:
+                first_ayah = last_ayah = int(ayah_part)
+            else:
+                first_part, last_part = ayah_part.split("-", 1)
+                first_ayah, last_ayah = int(first_part), int(last_part)
         except (TypeError, ValueError) as exc:
-            raise ValueError("--verse-key must have the form SURAH:AYAH, for example 2:255.") from exc
-        verse_text, surah_name = get_verified_verse(ROOT / "data", surah_number, ayah_number)
-        return verse_text, surah_name, surah_number, ayah_number, f"{surah_number}:{ayah_number}", True
+            raise ValueError(
+                "Use --verse-key SURAH:AYAH or --verse-range SURAH:FIRST-LAST."
+            ) from exc
+
+        verse_list, surah_name = get_verified_verses(
+            ROOT / "data", surah_number, first_ayah, last_ayah
+        )
+        verse_text = "\n".join(verse_list)
+        verse_ids = [
+            f"{surah_number}:{number}"
+            for number in range(first_ayah, last_ayah + 1)
+        ]
+        return (
+            verse_text, surah_name, surah_number, first_ayah, last_ayah,
+            verse_ids, True
+        )
 
     if not args.verse or not args.surah or args.ayah is None:
-        raise ValueError("Use --verse-key SURAH:AYAH, or provide --verse, --surah, and --ayah together.")
+        raise ValueError(
+            "Use --verse-key, --verse-range, or provide --verse, --surah, and --ayah together."
+        )
+    if args.ayah < 1:
+        raise ValueError("Manual ayah number must be positive.")
     manual_id = f"manual:{args.surah}:{args.ayah}"
-    return args.verse, args.surah, None, args.ayah, manual_id, False
-
+    return args.verse, args.surah, None, args.ayah, args.ayah, [manual_id], False
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -173,6 +198,7 @@ def main() -> int:
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--verse-key", help="Verified Tanzil verse key, e.g. 2:255.")
+    source.add_argument("--verse-range", help="Consecutive verified range, e.g. 105:1-5.")
     source.add_argument("--verse", help="Manual verse text; use only after checking it against a Mushaf.")
     parser.add_argument("--surah", help="Required with manual --verse.")
     parser.add_argument("--ayah", type=int, help="Required with manual --verse.")
@@ -190,7 +216,7 @@ def main() -> int:
         if shutil.which(executable) is None:
             raise RuntimeError(f"{executable} is required and must be available on PATH.")
 
-    verse_text, surah_name, surah_number, ayah_number, verse_id, source_verified = parse_verse(args)
+    verse_text, surah_name, surah_number, first_ayah, last_ayah, verse_ids, source_verified = parse_verse(args)
 
     config_path = Path(args.config)
     if not config_path.is_absolute():
@@ -218,14 +244,22 @@ def main() -> int:
 
     registry_path = ROOT / "data" / "used_verses.json"
     registry = load_json(registry_path)
-    if verse_id in registry.get("used", []) and not args.allow_repeat:
-        raise ValueError(f"{verse_id} is already in data/used_verses.json.")
+    already_used = sorted(set(verse_ids).intersection(registry.get("used", [])))
+    if already_used and not args.allow_repeat:
+        raise ValueError(f"These verses were already used: {', '.join(already_used)}")
 
     width, height = int(cfg["video"]["width"]), int(cfg["video"]["height"])
     fps = int(cfg["video"]["fps"])
     output_dir = ROOT / cfg["video"]["output_directory"]
     output_dir.mkdir(parents=True, exist_ok=True)
-    file_stem = f"s{surah_number:03}-a{ayah_number:03}" if surah_number else f"manual-a{ayah_number:03}"
+    if surah_number:
+        file_stem = (
+            f"s{surah_number:03}-a{first_ayah:03}"
+            if first_ayah == last_ayah
+            else f"s{surah_number:03}-a{first_ayah:03}-{last_ayah:03}"
+        )
+    else:
+        file_stem = f"manual-a{first_ayah:03}"
     output = Path(args.output) if args.output else output_dir / f"{file_stem}.mp4"
     if not output.is_absolute():
         output = (ROOT / output).resolve()
@@ -235,7 +269,12 @@ def main() -> int:
     background_image = work_dir / "landscape.png"
     overlay_image = work_dir / "verse_overlay.png"
     make_fallback_landscape(background_image, width, height)
-    reference = f"سورة {surah_name} • الآية {ayah_number}"
+    ayah_label = (
+        f"الآية {first_ayah}"
+        if first_ayah == last_ayah
+        else f"الآيات {first_ayah}–{last_ayah}"
+    )
+    reference = f"سورة {surah_name} • {ayah_label}"
     make_text_overlay(overlay_image, verse_text, reference, cfg, source_verified)
 
     duration_frames = max(1, int(duration * fps))
@@ -280,7 +319,7 @@ def main() -> int:
     run(command)
 
     if not args.allow_repeat:
-        registry.setdefault("used", []).append(verse_id)
+        registry.setdefault("used", []).extend(verse_ids)
         registry_path.write_text(
             json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
