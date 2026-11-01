@@ -93,11 +93,14 @@ jobs:
           retention-days: 7
 
       - name: Send video metadata sample to Make webhook
-        if: ${{ secrets.MAKE_WEBHOOK_URL != '' }}
         env:
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           VIDEO_PATH: output/s105-a001-005.mp4
         run: |
+          if [ -z "$MAKE_WEBHOOK_URL" ]; then
+            echo "MAKE_WEBHOOK_URL is not configured; skipping metadata sample."
+            exit 0
+          fi
           python - <<'PY' > /tmp/make-payload.json
           import json, os, pathlib, subprocess
           path = pathlib.Path(os.environ["VIDEO_PATH"])
