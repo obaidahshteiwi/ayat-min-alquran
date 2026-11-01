@@ -27,7 +27,7 @@ class QuranRenderTextTests(unittest.TestCase):
         source = f"{BASMALA} {AL_FIL_1}"
         self.assertEqual(split_tanzil_basmala(source), (BASMALA, AL_FIL_1))
 
-    def test_surah_al_fil_display_has_unumbered_basmala_and_numbered_ayahs(self):
+    def test_surah_al_fil_display_has_unnumbered_basmala_and_numbered_ayahs(self):
         items = build_display_items(
             [f"{BASMALA} {AL_FIL_1}", "أَلَمْ يَجْعَلْ كَيْدَهُمْ فِي تَضْلِيلٍ"],
             105,
@@ -41,6 +41,10 @@ class QuranRenderTextTests(unittest.TestCase):
     def test_fatihah_basmala_remains_numbered_as_ayah_one(self):
         items = build_display_items([BASMALA], 1, 1)
         self.assertEqual(items, [("ayah", f"{BASMALA} ۝١")])
+
+    def test_missing_basmala_prefix_is_rejected_for_tanzil_surah_start(self):
+        with self.assertRaisesRegex(ValueError, "Could not safely separate"):
+            build_display_items(["نص لا يحتوي على البسملة"], 105, 1)
 
     def test_tawbah_does_not_add_a_basmala_block(self):
         items = build_display_items(["بَرَاءَةٌ مِنَ اللَّهِ"], 9, 1)
