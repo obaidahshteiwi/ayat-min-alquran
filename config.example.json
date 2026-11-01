@@ -1,0 +1,20 @@
+{
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "min_duration_seconds": 30,
+    "max_duration_seconds": 60,
+    "output_directory": "output"
+  },
+  "typography": {
+    "font_path": "assets/fonts/Amiri-Regular.ttf",
+    "font_size": 66,
+    "reference_font_size": 38,
+    "text_color": "#FFFFFF"
+  },
+  "media": {
+    "background_video": "",
+    "audio_file": ""
+  }
+}
