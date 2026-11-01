@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a local 9:16 Quran verse video. This script never uploads or publishes."""
+"""Render a local 9:16 Quran Shorts video. Never uploads or publishes."""
 
 from __future__ import annotations
 
@@ -8,14 +8,16 @@ import json
 import shutil
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from quran_source import get_verified_verse  # noqa: E402
 
 
 def load_json(path: Path) -> dict:
@@ -37,16 +39,15 @@ def probe_duration(audio_path: Path) -> float:
 
 
 def make_fallback_landscape(path: Path, width: int, height: int) -> None:
-    """Create a simple original illustrated landscape when no licensed video is supplied."""
+    """Create an original illustrated landscape if no licensed footage is supplied."""
     image = Image.new("RGB", (width, height))
     pixels = image.load()
-    top = (18, 47, 69)
-    bottom = (126, 154, 139)
+    top, bottom = (18, 47, 69), (126, 154, 139)
     for y in range(height):
         t = y / max(1, height - 1)
-        color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
+        shade = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
         for x in range(width):
-            pixels[x, y] = color
+            pixels[x, y] = shade
 
     draw = ImageDraw.Draw(image, "RGBA")
     draw.ellipse((width * 0.66, height * 0.16, width * 0.84, height * 0.25),
@@ -65,11 +66,12 @@ def make_fallback_landscape(path: Path, width: int, height: int) -> None:
 
 
 def shape_arabic(text: str) -> str:
+    # Presentation shaping is applied only for display; the source verse is not rewritten.
     return get_display(arabic_reshaper.reshape(text))
 
 
-def wrap_arabic(text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.ImageDraw,
-                max_width: int) -> list[str]:
+def wrap_arabic(text: str, font: ImageFont.FreeTypeFont,
+                draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
     words = text.split()
     lines: list[str] = []
     current = ""
@@ -86,9 +88,9 @@ def wrap_arabic(text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.ImageDr
     return lines
 
 
-def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict) -> None:
-    width = int(cfg["video"]["width"])
-    height = int(cfg["video"]["height"])
+def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
+                      show_tanzil_credit: bool) -> None:
+    width, height = int(cfg["video"]["width"]), int(cfg["video"]["height"])
     typography = cfg["typography"]
     font_path = ROOT / typography["font_path"]
     if not font_path.is_file():
@@ -100,8 +102,9 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict) -> None
     draw = ImageDraw.Draw(canvas)
     verse_font = ImageFont.truetype(str(font_path), int(typography["font_size"]))
     ref_font = ImageFont.truetype(str(font_path), int(typography["reference_font_size"]))
-    max_text_width = int(width * 0.84)
-    lines = wrap_arabic(verse, verse_font, draw, max_text_width)
+    credit_font = ImageFont.truetype(str(font_path), max(20, int(typography["reference_font_size"]) // 2))
+
+    lines = wrap_arabic(verse, verse_font, draw, int(width * 0.84))
     line_gap = 28
     line_heights = [
         draw.textbbox((0, 0), line, font=verse_font)[3] -
@@ -110,13 +113,18 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict) -> None
     ]
     ref_display = shape_arabic(reference)
     ref_box = draw.textbbox((0, 0), ref_display, font=ref_font)
-    total_height = sum(line_heights) + line_gap * max(0, len(lines) - 1) + 90 + (ref_box[3] - ref_box[1])
+    ref_height = ref_box[3] - ref_box[1]
+
+    credit_display = shape_arabic("المصدر: مشروع تنزيل - Tanzil.net") if show_tanzil_credit else ""
+    credit_box = draw.textbbox((0, 0), credit_display, font=credit_font) if credit_display else (0, 0, 0, 0)
+    credit_height = credit_box[3] - credit_box[1]
+    total_height = sum(line_heights) + line_gap * max(0, len(lines) - 1) + 45 + ref_height
+    if show_tanzil_credit:
+        total_height += 24 + credit_height
+
     y = (height - total_height) // 2
     color = typography.get("text_color", "#FFFFFF")
-
-    # Subtle translucent panel improves legibility without covering the whole scene.
-    panel_top = max(80, y - 55)
-    panel_bottom = min(height - 80, y + total_height + 55)
+    panel_top, panel_bottom = max(80, y - 55), min(height - 80, y + total_height + 55)
     draw.rounded_rectangle(
         (width * 0.06, panel_top, width * 0.94, panel_bottom),
         radius=38, fill=(0, 0, 0, 92), outline=(255, 255, 255, 45), width=2
@@ -129,29 +137,57 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict) -> None
                   stroke_width=1, stroke_fill=(0, 0, 0, 150))
         y += line_height + line_gap
 
-    y += 40
-    ref_box = draw.textbbox((0, 0), ref_display, font=ref_font)
-    x = (width - (ref_box[2] - ref_box[0])) // 2
+    y += 45
+    x = (width - ref_height * 0 - (ref_box[2] - ref_box[0])) // 2
     draw.text((x, y), ref_display, font=ref_font, fill="#F4DFA8",
               stroke_width=1, stroke_fill=(0, 0, 0, 150))
+
+    if show_tanzil_credit:
+        y += ref_height + 24
+        x = (width - (credit_box[2] - credit_box[0])) // 2
+        draw.text((x, y), credit_display, font=credit_font, fill="#FFFFFF",
+                  stroke_width=1, stroke_fill=(0, 0, 0, 150))
+
     canvas.save(path)
 
 
+def parse_verse(args):
+    if args.verse_key:
+        try:
+            surah_number, ayah_number = (int(part) for part in args.verse_key.split(":"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("--verse-key must have the form SURAH:AYAH, for example 2:255.") from exc
+        verse_text, surah_name = get_verified_verse(ROOT / "data", surah_number, ayah_number)
+        return verse_text, surah_name, surah_number, ayah_number, f"{surah_number}:{ayah_number}", True
+
+    if not args.verse or not args.surah or args.ayah is None:
+        raise ValueError("Use --verse-key SURAH:AYAH, or provide --verse, --surah, and --ayah together.")
+    manual_id = f"manual:{args.surah}:{args.ayah}"
+    return args.verse, args.surah, None, args.ayah, manual_id, False
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render a local Quran Shorts video; no upload is performed.")
-    parser.add_argument("--verse", required=True, help="Exact, verified Arabic verse text.")
-    parser.add_argument("--surah", required=True, help="Surah name.")
-    parser.add_argument("--ayah", required=True, type=int, help="Ayah number.")
+    parser = argparse.ArgumentParser(
+        description="Render a local Quran Shorts video; no upload or publishing is performed."
+    )
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--verse-key", help="Verified Tanzil verse key, e.g. 2:255.")
+    source.add_argument("--verse", help="Manual verse text; use only after checking it against a Mushaf.")
+    parser.add_argument("--surah", help="Required with manual --verse.")
+    parser.add_argument("--ayah", type=int, help="Required with manual --verse.")
     parser.add_argument("--audio", help="Path to a licensed recitation audio file.")
     parser.add_argument("--background", help="Optional licensed background video file.")
     parser.add_argument("--config", default="config.json", help="Path to local config JSON.")
     parser.add_argument("--output", help="Optional output MP4 path.")
-    parser.add_argument("--allow-repeat", action="store_true", help="Allow rendering a verse already in the registry.")
+    parser.add_argument("--allow-repeat", action="store_true",
+                        help="Allow rendering a verse already in the registry.")
     args = parser.parse_args()
 
     for executable in ("ffmpeg", "ffprobe"):
         if shutil.which(executable) is None:
             raise RuntimeError(f"{executable} is required and must be available on PATH.")
+
+    verse_text, surah_name, surah_number, ayah_number, verse_id, source_verified = parse_verse(args)
 
     config_path = Path(args.config)
     if not config_path.is_absolute():
@@ -170,7 +206,6 @@ def main() -> int:
     if not min_duration <= duration <= max_duration:
         raise ValueError(f"Audio duration is {duration:.1f}s; expected {min_duration:.0f}–{max_duration:.0f}s.")
 
-    verse_id = f"{args.surah}:{args.ayah}"
     registry_path = ROOT / "data" / "used_verses.json"
     registry = load_json(registry_path)
     if verse_id in registry.get("used", []) and not args.allow_repeat:
@@ -180,7 +215,8 @@ def main() -> int:
     fps = int(cfg["video"]["fps"])
     output_dir = ROOT / cfg["video"]["output_directory"]
     output_dir.mkdir(parents=True, exist_ok=True)
-    output = Path(args.output) if args.output else output_dir / f"{args.surah}-{args.ayah}.mp4"
+    file_stem = f"s{surah_number:03}-a{ayah_number:03}" if surah_number else f"manual-a{ayah_number:03}"
+    output = Path(args.output) if args.output else output_dir / f"{file_stem}.mp4"
     if not output.is_absolute():
         output = (ROOT / output).resolve()
 
@@ -189,9 +225,10 @@ def main() -> int:
     background_image = work_dir / "landscape.png"
     overlay_image = work_dir / "verse_overlay.png"
     make_fallback_landscape(background_image, width, height)
-    make_text_overlay(overlay_image, args.verse, f"سورة {args.surah} • الآية {args.ayah}", cfg)
+    reference = f"سورة {surah_name} • الآية {ayah_number}"
+    make_text_overlay(overlay_image, verse_text, reference, cfg, source_verified)
 
-    frames = max(1, int(duration * fps))
+    duration_frames = max(1, int(duration * fps))
     background_video = args.background or cfg["media"].get("background_video", "")
     if background_video:
         bg_path = Path(background_video)
@@ -199,31 +236,40 @@ def main() -> int:
             bg_path = (ROOT / bg_path).resolve()
         if not bg_path.is_file():
             raise FileNotFoundError(f"Background video not found: {bg_path}")
-        inputs = ["-stream_loop", "-1", "-i", str(bg_path), "-i", str(audio), "-loop", "1", "-i", str(overlay_image)]
-        base_filter = f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps={fps},trim=duration={duration}[bg];"
+        inputs = ["-stream_loop", "-1", "-i", str(bg_path), "-i", str(audio),
+                  "-loop", "1", "-i", str(overlay_image)]
+        base_filter = (
+            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},fps={fps},trim=duration={duration}[bg];"
+        )
     else:
-        inputs = ["-loop", "1", "-i", str(background_image), "-i", str(audio), "-loop", "1", "-i", str(overlay_image)]
+        inputs = ["-loop", "1", "-i", str(background_image), "-i", str(audio),
+                  "-loop", "1", "-i", str(overlay_image)]
         base_filter = (
             f"[0:v]scale={width}:{height},zoompan=z='min(zoom+0.0005,1.06)':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s={width}x{height}:fps={fps}[bg];"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"d={duration_frames}:s={width}x{height}:fps={fps}[bg];"
         )
 
-    filter_complex = base_filter + f"[bg][2:v]overlay=0:0:format=auto,format=yuv420p[v]"
+    filter_complex = base_filter + "[bg][2:v]overlay=0:0:format=auto,format=yuv420p[v]"
     command = [
         "ffmpeg", "-y", *inputs, "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "1:a:0", "-t", str(duration),
         "-c:v", "libx264", "-preset", "medium", "-crf", "21",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-        str(output)
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)
     ]
     run(command)
 
     if not args.allow_repeat:
         registry.setdefault("used", []).append(verse_id)
-        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        registry_path.write_text(
+            json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
 
     print(f"Video created locally: {output}")
-    print("No upload, publication, scheduling, or external API call was performed.")
+    if not source_verified:
+        print("WARNING: Manual verse text was supplied; its wording was not source-validated by this tool.")
+    print("No upload, publication, scheduling, or YouTube API call was performed.")
     return 0
 
 
