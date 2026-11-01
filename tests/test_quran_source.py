@@ -51,7 +51,7 @@ class QuranSourceTests(unittest.TestCase):
         self.assertEqual(len(surahs), 114)
         self.assertEqual(len(verses), 6236)
         self.assertEqual(verses["2:255"], "نص اختبار 2-255")
-        self.assertEqual(surahs[2]["ayah_count"], 200)
+        self.assertEqual(surahs[2]["ayah_count"], 286)
 
     def test_missing_copyright_notice_is_rejected(self):
         text = synthetic_text().replace(
