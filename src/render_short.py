@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, features
@@ -81,6 +82,76 @@ def arabic_text_bbox(draw: ImageDraw.ImageDraw, text: str,
     return draw.textbbox((0, 0), text, font=font, direction="rtl", language="ar")
 
 
+def arabic_indic_number(number: int) -> str:
+    """Format an ayah number using Arabic-Indic digits."""
+    return str(number).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+
+
+def split_tanzil_basmala(verse: str) -> tuple[str, str] | None:
+    """Separate the unnumbered opening basmala from Tanzil ayah 1 for surahs 2–114."""
+    expected = "بسماللهالرحمنالرحيم"
+    letter_map = {"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي"}
+    collected = []
+    end_index = None
+    for index, char in enumerate(verse):
+        if char.isspace() or char == "ـ" or unicodedata.category(char).startswith("M"):
+            continue
+        collected.append(letter_map.get(char, char))
+        if len(collected) == len(expected):
+            end_index = index + 1
+            break
+    if "".join(collected) != expected or end_index is None:
+        return None
+
+    # Keep diacritics attached to the final letter of the basmala.
+    while end_index < len(verse) and (
+        verse[end_index] == "ـ"
+        or unicodedata.category(verse[end_index]).startswith("M")
+    ):
+        end_index += 1
+
+    basmala = verse[:end_index].strip()
+    remainder = verse[end_index:].lstrip()
+    if not basmala or not remainder:
+        return None
+    return basmala, remainder
+
+
+def build_display_items(
+    verses: list[str], surah_number: int | None, first_ayah: int
+) -> list[tuple[str, str]]:
+    """Build visual blocks while preserving all original Tanzil verse text."""
+    display_verses = list(verses)
+    items: list[tuple[str, str]] = []
+
+    # Tanzil stores basmalas for surahs 2–114 in the first ayah record.
+    # Display it separately and without a number, as in the Medina Mushaf.
+    if surah_number not in (None, 1, 9) and first_ayah == 1:
+        split = split_tanzil_basmala(display_verses[0])
+        if split is None:
+            raise ValueError(
+                "Could not safely separate Tanzil's opening basmala from ayah 1. "
+                "The source text was left unchanged; refusing ambiguous numbering."
+            )
+        basmala, first_verse = split
+        items.append(("basmala", basmala))
+        display_verses[0] = first_verse
+
+    for offset, verse_text in enumerate(display_verses):
+        ayah_number = first_ayah + offset
+        items.append(("ayah", f"{verse_text} ۝{arabic_indic_number(ayah_number)}"))
+    return items
+
+
+def format_ayah_reference(surah_name: str, first_ayah: int, last_ayah: int) -> str:
+    if first_ayah == last_ayah:
+        return f"سورة {surah_name} • الآية {arabic_indic_number(first_ayah)}"
+    return (
+        f"سورة {surah_name} • من الآية "
+        f"{arabic_indic_number(first_ayah)} إلى الآية {arabic_indic_number(last_ayah)}"
+    )
+
+
 def wrap_arabic(text: str, font: ImageFont.FreeTypeFont,
                 draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
     """Wrap logical Arabic text; RAQM shapes and orders it only while rendering."""
@@ -116,8 +187,8 @@ def draw_centered_arabic(draw: ImageDraw.ImageDraw, text: str, y: int,
     return bbox[3] - bbox[1]
 
 
-def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
-                      show_tanzil_credit: bool) -> None:
+def make_text_overlay(path: Path, display_items: list[tuple[str, str]],
+                      reference: str, cfg: dict, show_tanzil_credit: bool) -> None:
     width, height = int(cfg["video"]["width"]), int(cfg["video"]["height"])
     typography = cfg["typography"]
     font_path = ROOT / typography["font_path"]
@@ -129,61 +200,80 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
     verse_font = load_arabic_font(font_path, int(typography["font_size"]))
+    basmala_font = load_arabic_font(font_path, int(typography.get("basmala_font_size", 48)))
     ref_font = load_arabic_font(font_path, int(typography["reference_font_size"]))
     credit_font = load_arabic_font(
         font_path, max(20, int(typography["reference_font_size"]) // 2)
     )
 
-    lines = wrap_arabic(verse, verse_font, draw, int(width * 0.84))
-    line_gap = 28
-    line_heights = [
-        (bbox := arabic_text_bbox(draw, line, verse_font))[3] - bbox[1]
-        for line in lines
-    ]
-    ref_display = reference
-    ref_box = arabic_text_bbox(draw, ref_display, ref_font)
-    ref_height = ref_box[3] - ref_box[1]
+    blocks = []
+    line_gap = 12
+    block_gap = 25
+    for kind, text in display_items:
+        font = basmala_font if kind == "basmala" else verse_font
+        lines = wrap_arabic(text, font, draw, int(width * 0.84))
+        heights = [
+            (bbox := arabic_text_bbox(draw, line, font))[3] - bbox[1]
+            for line in lines
+        ]
+        blocks.append((kind, lines, heights, font))
 
+    text_height = sum(sum(block[2]) for block in blocks)
+    text_height += line_gap * sum(max(0, len(block[1]) - 1) for block in blocks)
+    text_height += block_gap * max(0, len(blocks) - 1)
+
+    ref_box = arabic_text_bbox(draw, reference, ref_font)
+    ref_height = ref_box[3] - ref_box[1]
     credit_display = "المصدر: مشروع تنزيل - Tanzil.net" if show_tanzil_credit else ""
     credit_box = (
         arabic_text_bbox(draw, credit_display, credit_font)
         if credit_display else (0, 0, 0, 0)
     )
     credit_height = credit_box[3] - credit_box[1]
-    total_height = sum(line_heights) + line_gap * max(0, len(lines) - 1) + 45 + ref_height
+    separator_gap = 34
+    total_height = text_height + separator_gap + ref_height
     if show_tanzil_credit:
-        total_height += 24 + credit_height
+        total_height += 20 + credit_height
+    if total_height > height - 220:
+        raise ValueError(
+            "The selected ayahs do not fit safely in one vertical Short. "
+            "Use a shorter ayah range so every ayah number remains readable."
+        )
 
     y = (height - total_height) // 2
     color = typography.get("text_color", "#FFFFFF")
-    panel_top, panel_bottom = max(80, y - 55), min(height - 80, y + total_height + 55)
+    panel_top = max(80, y - 48)
+    panel_bottom = min(height - 80, y + total_height + 48)
     draw.rounded_rectangle(
-        (width * 0.06, panel_top, width * 0.94, panel_bottom),
-        radius=38, fill=(0, 0, 0, 92), outline=(255, 255, 255, 45), width=2
+        (width * 0.055, panel_top, width * 0.945, panel_bottom),
+        radius=38, fill=(0, 0, 0, 112), outline=(255, 255, 255, 58), width=2
     )
 
-    for line, line_height in zip(lines, line_heights):
-        draw_centered_arabic(
-            draw, line, y, verse_font, width, color,
-            stroke_width=1, stroke_fill=(0, 0, 0, 150)
-        )
-        y += line_height + line_gap
+    for block_index, (kind, lines, heights, font) in enumerate(blocks):
+        fill = "#F4DFA8" if kind == "basmala" else color
+        for line, line_height in zip(lines, heights):
+            draw_centered_arabic(
+                draw, line, y, font, width, fill,
+                stroke_width=1, stroke_fill=(0, 0, 0, 165)
+            )
+            y += line_height + line_gap
+        if lines:
+            y -= line_gap
+        if block_index < len(blocks) - 1:
+            y += block_gap
 
-    y += 45
+    y += separator_gap
     draw_centered_arabic(
-        draw, ref_display, y, ref_font, width, "#F4DFA8",
+        draw, reference, y, ref_font, width, "#F4DFA8",
         stroke_width=1, stroke_fill=(0, 0, 0, 150)
     )
-
     if show_tanzil_credit:
-        y += ref_height + 24
+        y += ref_height + 20
         draw_centered_arabic(
             draw, credit_display, y, credit_font, width, "#FFFFFF",
             stroke_width=1, stroke_fill=(0, 0, 0, 150)
         )
-
     canvas.save(path)
-
 
 def parse_verse(args):
     if args.verse_key or args.verse_range:
@@ -204,13 +294,13 @@ def parse_verse(args):
         verse_list, surah_name = get_verified_verses(
             ROOT / "data", surah_number, first_ayah, last_ayah
         )
-        verse_text = "\n".join(verse_list)
+        display_items = build_display_items(verse_list, surah_number, first_ayah)
         verse_ids = [
             f"{surah_number}:{number}"
             for number in range(first_ayah, last_ayah + 1)
         ]
         return (
-            verse_text, surah_name, surah_number, first_ayah, last_ayah,
+            display_items, surah_name, surah_number, first_ayah, last_ayah,
             verse_ids, True
         )
 
@@ -221,7 +311,8 @@ def parse_verse(args):
     if args.ayah < 1:
         raise ValueError("Manual ayah number must be positive.")
     manual_id = f"manual:{args.surah}:{args.ayah}"
-    return args.verse, args.surah, None, args.ayah, args.ayah, [manual_id], False
+    manual_items = [("ayah", f"{args.verse} ۝{arabic_indic_number(args.ayah)}")]
+    return manual_items, args.surah, None, args.ayah, args.ayah, [manual_id], False
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -247,7 +338,7 @@ def main() -> int:
         if shutil.which(executable) is None:
             raise RuntimeError(f"{executable} is required and must be available on PATH.")
 
-    verse_text, surah_name, surah_number, first_ayah, last_ayah, verse_ids, source_verified = parse_verse(args)
+    display_items, surah_name, surah_number, first_ayah, last_ayah, verse_ids, source_verified = parse_verse(args)
 
     config_path = Path(args.config)
     if not config_path.is_absolute():
@@ -300,13 +391,8 @@ def main() -> int:
     background_image = work_dir / "landscape.png"
     overlay_image = work_dir / "verse_overlay.png"
     make_fallback_landscape(background_image, width, height)
-    ayah_label = (
-        f"الآية {first_ayah}"
-        if first_ayah == last_ayah
-        else f"الآيات {first_ayah}–{last_ayah}"
-    )
-    reference = f"سورة {surah_name} • {ayah_label}"
-    make_text_overlay(overlay_image, verse_text, reference, cfg, source_verified)
+    reference = format_ayah_reference(surah_name, first_ayah, last_ayah)
+    make_text_overlay(overlay_image, display_items, reference, cfg, source_verified)
 
     background_video = args.background or cfg["media"].get("background_video", "")
     if background_video:
