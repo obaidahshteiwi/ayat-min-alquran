@@ -1,0 +1,92 @@
+name: Build First Quran Short (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-first-quran-short
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Download and validate Tanzil Quran source
+        run: |
+          python scripts/fetch_tanzil.py
+          python scripts/validate_quran.py
+
+      - name: Download Amiri font and license
+        run: python scripts/setup_assets.py
+
+      - name: Download CC0 starter recitation and nature background
+        run: python scripts/fetch_starter_media.py
+
+      - name: Prepare local configuration
+        run: cp config.example.json config.json
+
+      - name: Build first short locally in runner
+        run: python src/render_short.py --verse-range 105:1-5
+
+      - name: Verify output format and duration
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          path = Path("output/s105-a001-005.mp4")
+          if not path.is_file():
+              raise SystemExit("Expected MP4 output was not created.")
+
+          result = subprocess.run(
+              [
+                  "ffprobe", "-v", "error",
+                  "-show_entries", "stream=codec_type,width,height:format=duration",
+                  "-of", "json", str(path),
+              ],
+              check=True, capture_output=True, text=True,
+          )
+          data = json.loads(result.stdout)
+          video = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
+          duration = float(data["format"]["duration"])
+          if not video or video.get("width") != 1080 or video.get("height") != 1920:
+              raise SystemExit("Video is not 1080x1920 portrait.")
+          if not 30 <= duration <= 60:
+              raise SystemExit(f"Video duration {duration:.2f}s is outside 30–60 seconds.")
+          print(f"Verified output: {path}, 1080x1920, {duration:.2f}s")
+          PY
+
+      - name: Upload MP4 as a downloadable build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayat-min-alquran-first-short
+          path: output/s105-a001-005.mp4
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Confirm no YouTube upload
+        run: echo "MP4 was saved as a GitHub Actions artifact only. No YouTube upload or publication was performed."
