@@ -14,8 +14,8 @@
     "text_color": "#FFFFFF"
   },
   "media": {
-    "background_video": "",
-    "audio_file": "",
+    "background_video": "assets/backgrounds/misty-river-47s.webm",
+    "audio_file": "assets/audio/al-fil-105.mp3",
     "audio_license_file": "assets/audio/audio-rights.json",
     "background_license_file": "assets/backgrounds/background-rights.json"
   }
