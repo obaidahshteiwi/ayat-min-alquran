@@ -1,0 +1,11 @@
+مقطع قرآني من سورة [اسم السورة]، الآية [رقم الآية].
+
+النص القرآني: مشروع تنزيل (Tanzil Project)
+Tanzil Quran Text
+Copyright (C) 2007-2021 Tanzil Project
+License: Creative Commons Attribution 3.0
+Source: https://tanzil.net/
+This text may not be modified.
+License details: https://tanzil.net/docs/Text_License
+
+تم الإبقاء على النص القرآني كما ورد من مصدره دون تغيير.
