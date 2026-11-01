@@ -1,0 +1,12 @@
+{
+  "asset_file": "assets/audio/recitation.mp3",
+  "reciter": "",
+  "rights_holder": "",
+  "license_name": "",
+  "license_url": "",
+  "permission_evidence_file": "",
+  "youtube_upload_allowed": false,
+  "monetization_allowed": false,
+  "attribution": "",
+  "notes": "لا تجعل youtube_upload_allowed=true إلا بعد التحقق من ترخيص يسمح صراحة بإعادة نشر هذا التسجيل على YouTube أو الحصول على إذن مكتوب من صاحب الحقوق."
+}
