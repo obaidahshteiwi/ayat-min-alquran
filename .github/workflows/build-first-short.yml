@@ -26,10 +26,14 @@ jobs:
       - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg libraqm-dev libharfbuzz-dev libfribidi-dev
 
       - name: Install Python dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-binary=Pillow -r requirements.txt
+          python -c "from PIL import features; assert features.check_feature('raqm'), 'Pillow RAQM support is required for Arabic text shaping'"
+
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
