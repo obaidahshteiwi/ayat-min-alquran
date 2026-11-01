@@ -10,9 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import arabic_reshaper
-from bidi.algorithm import get_display
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, features
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -66,13 +64,26 @@ def make_fallback_landscape(path: Path, width: int, height: int) -> None:
     image.save(path)
 
 
-def shape_arabic(text: str) -> str:
-    # Presentation shaping is applied only for display; the source verse is not rewritten.
-    return get_display(arabic_reshaper.reshape(text))
+def load_arabic_font(path: Path, size: int) -> ImageFont.FreeTypeFont:
+    """Load a font with HarfBuzz/FriBidi shaping through Pillow's RAQM engine."""
+    if not features.check_feature("raqm"):
+        raise RuntimeError(
+            "Pillow was built without libraqm support. Install libraqm-dev, "
+            "libharfbuzz-dev and libfribidi-dev, then rebuild Pillow."
+        )
+    return ImageFont.truetype(
+        str(path), size, layout_engine=ImageFont.Layout.RAQM
+    )
+
+
+def arabic_text_bbox(draw: ImageDraw.ImageDraw, text: str,
+                     font: ImageFont.FreeTypeFont) -> tuple[int, int, int, int]:
+    return draw.textbbox((0, 0), text, font=font, direction="rtl", language="ar")
 
 
 def wrap_arabic(text: str, font: ImageFont.FreeTypeFont,
                 draw: ImageDraw.ImageDraw, max_width: int) -> list[str]:
+    """Wrap logical Arabic text; RAQM shapes and orders it only while rendering."""
     lines: list[str] = []
     paragraphs = text.splitlines() or [text]
     for paragraph in paragraphs:
@@ -80,15 +91,29 @@ def wrap_arabic(text: str, font: ImageFont.FreeTypeFont,
         current = ""
         for word in words:
             candidate = f"{current} {word}".strip()
-            shaped = shape_arabic(candidate)
-            if current and draw.textbbox((0, 0), shaped, font=font)[2] > max_width:
-                lines.append(shape_arabic(current))
+            bbox = arabic_text_bbox(draw, candidate, font)
+            if current and bbox[2] - bbox[0] > max_width:
+                lines.append(current)
                 current = word
             else:
                 current = candidate
         if current:
-            lines.append(shape_arabic(current))
+            lines.append(current)
     return lines
+
+
+def draw_centered_arabic(draw: ImageDraw.ImageDraw, text: str, y: int,
+                         font: ImageFont.FreeTypeFont, width: int,
+                         fill: str, stroke_width: int = 0,
+                         stroke_fill: str | None = None) -> int:
+    bbox = arabic_text_bbox(draw, text, font)
+    x = (width - (bbox[2] - bbox[0])) // 2 - bbox[0]
+    draw.text(
+        (x, y - bbox[1]), text, font=font, fill=fill,
+        stroke_width=stroke_width, stroke_fill=stroke_fill,
+        direction="rtl", language="ar",
+    )
+    return bbox[3] - bbox[1]
 
 
 def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
@@ -103,23 +128,27 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
 
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    verse_font = ImageFont.truetype(str(font_path), int(typography["font_size"]))
-    ref_font = ImageFont.truetype(str(font_path), int(typography["reference_font_size"]))
-    credit_font = ImageFont.truetype(str(font_path), max(20, int(typography["reference_font_size"]) // 2))
+    verse_font = load_arabic_font(font_path, int(typography["font_size"]))
+    ref_font = load_arabic_font(font_path, int(typography["reference_font_size"]))
+    credit_font = load_arabic_font(
+        font_path, max(20, int(typography["reference_font_size"]) // 2)
+    )
 
     lines = wrap_arabic(verse, verse_font, draw, int(width * 0.84))
     line_gap = 28
     line_heights = [
-        draw.textbbox((0, 0), line, font=verse_font)[3] -
-        draw.textbbox((0, 0), line, font=verse_font)[1]
+        (bbox := arabic_text_bbox(draw, line, verse_font))[3] - bbox[1]
         for line in lines
     ]
-    ref_display = shape_arabic(reference)
-    ref_box = draw.textbbox((0, 0), ref_display, font=ref_font)
+    ref_display = reference
+    ref_box = arabic_text_bbox(draw, ref_display, ref_font)
     ref_height = ref_box[3] - ref_box[1]
 
-    credit_display = shape_arabic("المصدر: مشروع تنزيل - Tanzil.net") if show_tanzil_credit else ""
-    credit_box = draw.textbbox((0, 0), credit_display, font=credit_font) if credit_display else (0, 0, 0, 0)
+    credit_display = "المصدر: مشروع تنزيل - Tanzil.net" if show_tanzil_credit else ""
+    credit_box = (
+        arabic_text_bbox(draw, credit_display, credit_font)
+        if credit_display else (0, 0, 0, 0)
+    )
     credit_height = credit_box[3] - credit_box[1]
     total_height = sum(line_heights) + line_gap * max(0, len(lines) - 1) + 45 + ref_height
     if show_tanzil_credit:
@@ -134,22 +163,24 @@ def make_text_overlay(path: Path, verse: str, reference: str, cfg: dict,
     )
 
     for line, line_height in zip(lines, line_heights):
-        box = draw.textbbox((0, 0), line, font=verse_font, stroke_width=1)
-        x = (width - (box[2] - box[0])) // 2
-        draw.text((x, y), line, font=verse_font, fill=color,
-                  stroke_width=1, stroke_fill=(0, 0, 0, 150))
+        draw_centered_arabic(
+            draw, line, y, verse_font, width, color,
+            stroke_width=1, stroke_fill=(0, 0, 0, 150)
+        )
         y += line_height + line_gap
 
     y += 45
-    x = (width - (ref_box[2] - ref_box[0])) // 2
-    draw.text((x, y), ref_display, font=ref_font, fill="#F4DFA8",
-              stroke_width=1, stroke_fill=(0, 0, 0, 150))
+    draw_centered_arabic(
+        draw, ref_display, y, ref_font, width, "#F4DFA8",
+        stroke_width=1, stroke_fill=(0, 0, 0, 150)
+    )
 
     if show_tanzil_credit:
         y += ref_height + 24
-        x = (width - (credit_box[2] - credit_box[0])) // 2
-        draw.text((x, y), credit_display, font=credit_font, fill="#FFFFFF",
-                  stroke_width=1, stroke_fill=(0, 0, 0, 150))
+        draw_centered_arabic(
+            draw, credit_display, y, credit_font, width, "#FFFFFF",
+            stroke_width=1, stroke_fill=(0, 0, 0, 150)
+        )
 
     canvas.save(path)
 
