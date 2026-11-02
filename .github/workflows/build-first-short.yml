@@ -85,6 +85,7 @@ jobs:
           PY
 
       - name: Upload MP4 as a downloadable build artifact
+        id: upload_video
         uses: actions/upload-artifact@v4
         with:
           name: ayat-min-alquran-first-short
@@ -96,6 +97,7 @@ jobs:
         env:
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           VIDEO_PATH: output/s105-a001-005.mp4
+          ARTIFACT_ID: ${{ steps.upload_video.outputs.artifact-id }}
         run: |
           if [ -z "$MAKE_WEBHOOK_URL" ]; then
             echo "MAKE_WEBHOOK_URL is not configured; skipping metadata sample."
@@ -123,6 +125,7 @@ jobs:
               "width": 1080,
               "height": 1920,
               "artifact_name": "ayat-min-alquran-first-short",
+              "artifact_id": int(os.environ["ARTIFACT_ID"]),
               "github_repository": os.environ["GITHUB_REPOSITORY"],
               "github_run_id": os.environ["GITHUB_RUN_ID"],
               "github_run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
